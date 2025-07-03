@@ -167,15 +167,34 @@ Each partner container is a self-contained application including:
 - Multiple services can consume the same data notifications
 - Decoupled architecture supporting independent partner deployments
 
-**Message Structure** (detailed schema TBD):
+**Message Structure** for dual data formats:
+
+**XML File Notification**:
 ```json
 {
   "timestamp": "2025-07-02T10:30:00Z",
   "dealership_uuid": "123e4567-e89b-12d3-a456-426614174000",
+  "dealership_name": "Honda of Concord",
   "s3_bucket": "hendrick-data",
   "s3_path": "daily/2025-07-02/dealership-123/inventory.xml",
+  "data_format": "xml",
   "data_type": "inventory",
-  "file_name": "structured-filename.xml"
+  "file_name": "inventory-20250702.xml"
+}
+```
+
+**CSD File Notification**:
+```json
+{
+  "timestamp": "2025-07-02T10:30:00Z",
+  "dealership_uuid": "honda-of-concord",
+  "dealership_name": "Honda of Concord", 
+  "s3_bucket": "hendrick-data",
+  "s3_path": "daily/2025-07-02/csd/DAT-WRH-TDSPARTS-INVENTORY-HOC-06-16-25_13.47.40.csv",
+  "data_format": "csd",
+  "data_type": "parts_inventory",
+  "csd_type": "INVENTORY",
+  "file_name": "DAT-WRH-TDSPARTS-INVENTORY-HOC-06-16-25_13.47.40.csv"
 }
 ```
 
@@ -361,6 +380,52 @@ GET /{partner}/v1/sales
 GET /{partner}/v1/service
 ```
 
+### CSD-Specific Endpoints (Parts Data)
+
+All partners with CSD data authorization have access to parts-focused endpoints based on actual Reynolds & Reynolds CSD file structures:
+
+#### 4. Parts Inventory
+```
+GET /{partner}/v1/parts/inventory
+```
+**Data Source**: CSD INVENTORY files (24 columns)
+**Description**: Current parts inventory including quantities, costs, bin locations, and status
+
+#### 5. Parts Sales
+```
+GET /{partner}/v1/parts/sales
+```
+**Data Source**: CSD SALES files (12 columns)
+**Description**: Parts sales transactions with invoice tracking, quantities, and financial details
+
+#### 6. Parts Movement
+```
+GET /{partner}/v1/parts/movement
+```
+**Data Source**: CSD MOVEMENT files (23 columns)
+**Description**: All parts inventory movements including sales, returns, purchases, and adjustments
+
+#### 7. Parts Purchase Orders
+```
+GET /{partner}/v1/parts/purchase-orders
+```
+**Data Source**: CSD PURCHASEORDER files (15 columns)
+**Description**: Purchase order tracking with vendor details and line item information
+
+#### 8. Parts Account Balances
+```
+GET /{partner}/v1/parts/accounts
+```
+**Data Source**: CSD ACCTBAL files (7 columns)
+**Description**: Account balance summaries for parts and accessories
+
+#### 9. Parts Work in Progress
+```
+GET /{partner}/v1/parts/work-in-progress
+```
+**Data Source**: CSD WIP files (11 columns)
+**Description**: Backorders and pending parts orders with historical tracking
+
 ### Query Parameters
 
 #### JSON:API Query Parameters
@@ -373,6 +438,10 @@ GET /{partner}/v1/service
 | `filter[start_date]` | string | Date range start (YYYY-MM-DD) | `2025-07-01` |
 | `filter[end_date]` | string | Date range end (YYYY-MM-DD) | `2025-07-07` |
 | `filter[dealership_id]` | string | Filter by specific dealership | `123e4567-e89b-12d3-a456-426614174000` |
+| `filter[part_number]` | string | Filter by specific part number (CSD endpoints) | `HP00279-BLK16-01` |
+| `filter[invoice_number]` | string | Filter by invoice number (parts sales) | `463324-1` |
+| `filter[transaction_type]` | string | Filter by transaction type (parts movement) | `SLS`, `RV`, `PUR`, `ADD` |
+| `filter[po_number]` | string | Filter by purchase order number | `073626` |
 
 **Pagination (JSON:API Spec)**:
 | Parameter | Type | Description | Default | Maximum |
@@ -880,20 +949,85 @@ CREATE TABLE data_freshness (
 );
 ```
 
+### CSD Data Sources & Structure
+
+Based on analysis of actual CSD (Custom Scheduled Download) files from Honda of Concord, the Reynolds & Reynolds system provides comprehensive parts department data through structured CSV exports.
+
+#### CSD File Types & Structure
+
+**File Naming Convention**: `DAT-WRH-TDSPARTS-{TYPE}-{DEALER}-{DATE}_{TIME}.csv`
+
+**Identified CSD Data Types**:
+
+1. **INVENTORY** - Parts inventory data (24 columns)
+   - Core fields: PART#, DESC, BASE-COST, QOH (Quantity on Hand), STAT (Status)
+   - Tracking: LAST-SLS (Last Sale), LAST-RECV-DATE, BIN locations
+   - Financial: COST, LIST price, NEW/DIRTY CORE pricing
+
+2. **SALES** - Parts sales transactions (12 columns) 
+   - Transaction tracking: INV#, OPEN-DATE, CLOSE-DATE
+   - Parts details: PART#, DESC, QSHP (Quantity Shipped), QORD (Quantity Ordered)
+   - Financial: EXT-COST, CORE charges, SRC codes
+
+3. **MOVEMENT** - All parts inventory movements (23 columns)
+   - Transaction details: TRANS-DATE, TRANS-TIME, TRANS#, TRANS-CODE
+   - Movement types: SLS (Sales), RV (Returns), PUR (Purchases), ADD (Additions)
+   - Tracking: USER-ID, INV-NO, CUST-NO, BIN locations
+
+4. **ACCTBAL** - Account balances (7 columns)
+   - Financial summary: BEG-BAL, CUR-BAL, END-BAL
+   - Account types: Parts & Accessories, Honda Accessories, Oil & Grease
+
+5. **PURCHASEORDER** - Purchase order tracking (15 columns)
+   - PO management: PO-NO, PO-TYPE, PO-STAT, CREATE-DATE
+   - Vendor details: VEND-NO, VEND-NAME, TOT-PO-AMT
+   - Line items: PO-LINE-QTY, PO-LINE-DESC, PO-LINE-PRICE
+
+6. **WIP** - Work in Progress/Backorders (11 columns)
+   - Pending orders: INV#, OPEN-DATE, PART#, VEH-MAKE
+   - Status tracking: QUANTITY-SHIPPED vs QUANTITY-ORDERED
+   - Historical data: Some orders dating back months
+
+7. **ACCTDETAILS** - Detailed account transactions *(schema TBD)*
+8. **COSTOVERRIDES** - Parts cost override data *(schema TBD)*
+
+#### CSD Data Characteristics
+
+**Data Volume**: Typical dealership generates hundreds to thousands of records per data type daily
+**Update Frequency**: Daily exports with timestamp precision to minutes
+**Data Quality**: Well-structured CSV with consistent headers, some embedded commas requiring proper parsing
+**Currency Handling**: Mix of decimal and comma-formatted currency values ("1,513.77")
+**Date Formats**: Primarily MM/DD/YY format with some variations
+
 ### Data Transformation Strategy
 
-#### Minimal Transformation Approach
+#### Dual Format Processing Approach
 
-**Principle**: Preserve maximum information with minimal processing to ensure data fidelity and troubleshooting capability.
+The system handles two distinct data formats from Reynolds & Reynolds:
 
-**Transformation Process**:
-1. **Source Data**: XML/CSD files from Reynolds & Reynolds
-2. **Conversion**: Direct XML/CSD to JSON conversion with minimal structural changes
+**Format 1: XML Files** - Standardized structured data (inventory, vehicle sales, service)
+**Format 2: CSD Files** - Parts-focused CSV data (8 distinct data types)
+
+**Transformation Principle**: Preserve maximum information with format-appropriate processing to ensure data fidelity and troubleshooting capability.
+
+#### XML Processing Pipeline
+1. **Source Data**: XML files from Reynolds & Reynolds (schema TBD)
+2. **Conversion**: Direct XML to JSON conversion with minimal structural changes
 3. **Preservation**: All original field names, values, and hierarchical structure maintained
-4. **Extraction**: Only essential fields extracted for database indexing (dealership_id, data_date)
-5. **Storage**: Complete original data stored in `json_data` column using standard naming convention
+4. **Extraction**: Essential fields extracted for database indexing (dealership_id, data_date)
+5. **Storage**: Complete original data stored in `json_data` column
 
-**Example Data Flow**:
+#### CSD Processing Pipeline
+1. **Source Data**: CSV files with structured headers and typed data
+2. **Parsing**: CSV to JSON with proper data type conversion
+3. **Field Mapping**: Standardize field names while preserving original data
+4. **Data Typing**: Convert currencies, dates, and numeric fields to appropriate types
+5. **Validation**: Ensure data integrity during CSV parsing (handle embedded commas, quotes)
+6. **Storage**: Processed JSON with original CSV data preserved in metadata
+
+**Example Data Flows**:
+
+**XML Processing Example**:
 ```
 XML Input:
 <vehicle>
@@ -912,12 +1046,34 @@ JSON Storage (json_data column):
   "model": "Accord",
   "complex_nested_data": { ... }
 }
+```
+
+**CSD Processing Example**:
+```
+CSV Input (INVENTORY):
+"Honda of Concord","HP00279-BLK16-01","HONDA","0W16 OE TOYOTA",4.00,0.00,28,,"06/14/25"
+
+JSON Storage (json_data column):
+{
+  "sys_stbr_name": "Honda of Concord",
+  "part_number": "HP00279-BLK16-01", 
+  "pts_mk_name": "HONDA",
+  "description": "0W16 OE TOYOTA",
+  "base_cost": 4.00,
+  "new_core_parts": 0.00,
+  "quantity_on_hand": 28,
+  "status": null,
+  "last_sale_date": "2025-06-14",
+  "data_source": "csd_inventory",
+  "original_csv_data": "Honda of Concord,HP00279-BLK16-01,HONDA,0W16 OE TOYOTA,4.00,0.00,28,,06/14/25"
+}
 
 Database Record:
 id: 1
-dealership_id: "123e4567-e89b-12d3-a456-426614174000" (extracted for indexing)
-data_date: "2025-07-02" (extracted for indexing)
-json_data: {complete original data as JSON}
+dealership_id: "honda-of-concord" (derived from SYS.STBR-NAME)
+data_date: "2025-06-16" (from filename timestamp)
+data_type: "parts_inventory" (from CSD file type)
+json_data: {processed CSD data with original preservation}
 created_at: "2025-07-02T10:30:00Z"
 ```
 
@@ -933,14 +1089,26 @@ partner:
   name: "Acme Corporation"
   
 authorization:
-  data_types: ["inventory", "dealership_info"]
+  # XML data types (standardized)
+  xml_data_types: ["inventory", "sales", "service"]
+  
+  # CSD data types (parts-focused)
+  csd_data_types: ["parts_inventory", "parts_sales", "parts_movement", "purchase_orders"]
+  
+  # Authorized dealerships
   dealerships: 
-    - "123e4567-e89b-12d3-a456-426614174000"
-    - "456e7890-e12b-34c5-d678-901234567890"
+    - "honda-of-concord"
+    - "hendrick-honda-charlotte"
 
 processing:
-  populate_tables: ["inventory_data", "dealership_info"]
-  ignore_tables: ["sales_data", "service_data"]
+  # XML processing tables
+  populate_xml_tables: ["inventory_data", "sales_data", "service_data"]
+  
+  # CSD processing tables  
+  populate_csd_tables: ["parts_inventory_data", "parts_sales_data", "parts_movement_data"]
+  
+  # Disabled data types
+  ignore_tables: ["account_balance_data", "work_in_progress_data"]
 ```
 
 #### Data Population Logic
@@ -1129,7 +1297,7 @@ The Hendrick Data API will be implemented using a phased approach that prioritiz
 - **Database**: SQLite with migration scripts and standardized schema
 - **Mock S3**: MinIO for realistic object storage simulation
 - **Mock Messaging**: Redis for pub/sub message simulation
-- **Test Data**: Anonymized real XML/CSD data for realistic testing
+- **Test Data**: Actual CSD sample files from Honda of Concord (see `/sample_files/sample_csd_files/`) and anonymized XML data
 
 **Key Deliverables**:
 1. **Development Environment Setup**
@@ -1154,9 +1322,10 @@ The Hendrick Data API will be implemented using a phased approach that prioritiz
 4. **Data Pipeline**
    - Mock S3 integration with MinIO
    - Mock messaging system with Redis
-   - XML/CSD to JSON transformation with minimal processing
+   - Dual format processing: XML and CSV (CSD) to JSON transformation
+   - CSD CSV parsing with proper data type conversion (currencies, dates)
    - Data freshness tracking and status management
-   - Partner authorization and data filtering logic
+   - Partner authorization and data filtering logic for both formats
 
 5. **Testing Framework**
    - API endpoint testing with realistic data scenarios
@@ -2700,6 +2869,76 @@ This comprehensive Operations & Maintenance framework provides the foundation fo
 
 **Items Requiring Further Definition:**
 - Historical data loading strategy for new partner onboarding (to be determined during implementation)
-- Detailed message schema for S3 notifications (to be determined during Phase 2 AWS integration)
-- Specific data schemas for inventory, sales, and service records (to be determined based on XML/CSD analysis)
+- XML file schemas and structures (pending XML sample files)
+- Complete CSD field definitions for ACCTDETAILS and COSTOVERRIDES files
 - Sample client integration code and documentation (API documentation will be auto-generated using FastAPI built-in tools)
+
+## Appendix A: CSD Data Field Definitions
+
+Based on analysis of actual CSD files from Honda of Concord (HOC):
+
+### CSD INVENTORY Fields (24 columns)
+| Field | Description | Data Type | Example |
+|-------|-------------|-----------|---------|
+| `SYS.STBR-NAME` | Dealership name | String | "Honda of Concord" |
+| `PART#` | Part number | String | "HP00279-BLK16-01" |
+| `PTS MK NAME` | Parts make name | String | "HONDA" |
+| `DESC` | Part description | String | "0W16 OE TOYOTA" |
+| `BASE-COST` | Base cost | Decimal | 4.00 |
+| `NEW CORE PARTS` | New core parts value | Decimal | 0.00 |
+| `QOH` | Quantity on hand | Integer | 28 |
+| `STAT` | Status code | String | "NS", "AP", null |
+| `LAST SLS` | Last sale date | Date (MM/DD/YY) | "06/14/25" |
+| `LAST-RECV-DATE` | Last received date | Date (MM/DD/YY) | "05/14/25" |
+| `SRC` | Source code | Integer | 9, 6, 4, 5, 8 |
+| `BIN1` | Primary bin location | String | "304", "121", "134" |
+| `BIN2` | Secondary bin location | String | Usually empty |
+| `COST` | Current cost | Decimal | 4.00 |
+| `LIST` | List price | Decimal | 7.07 |
+
+### CSD SALES Fields (12 columns)
+| Field | Description | Data Type | Example |
+|-------|-------------|-----------|---------|
+| `SYS.STBR-NAME` | Dealership name | String | "Honda of Concord" |
+| `INV#` | Invoice number | String | "463324-1" |
+| `OPEN-DATE` | Invoice open date | Date (MM/DD/YY) | "06/06/25" |
+| `CLOSE DATE` | Invoice close date | Date (MM/DD/YY) | "06/16/25" |
+| `PART #` | Part number | String | "HP71200-T43-A01" |
+| `ACCT-MK` | Account make | String | "HO" |
+| `DESC` | Part description | String | "GRILLE ASSY., FR." |
+| `QSHP` | Quantity shipped | Integer | 1 |
+| `QORD` | Quantity ordered | Integer | 1 |
+| `EXT-COST` | Extended cost | Decimal | 114.88 |
+| `CORE` | Core charge | Decimal | Usually empty |
+| `SRC` | Source code | Integer | 6 |
+
+### CSD MOVEMENT Fields (23 columns)
+| Field | Description | Data Type | Example |
+|-------|-------------|-----------|---------|
+| `SYS.STBR-NAME` | Dealership name | String | "Honda of Concord" |
+| `MAKE` | Make code | String | "HP", "PK" |
+| `TRANS-DATE` | Transaction date | Date (MM/DD/YY) | "06/16/25" |
+| `TRANS TIME` | Transaction time | Time (HH:MM) | "13:06" |
+| `TRANS #` | Transaction number | String | "520-11966" |
+| `PART #` | Part number | String | "01553-2DR9A" |
+| `DESC` | Part description | String | "CLIP" |
+| `TRANS-CODE` | Transaction code | String | "IO", "", "CO", "NO" |
+| `TRANS-TYPE` | Transaction type | String | "SLS", "RV", "PUR", "ADD" |
+| `TRANS-QTY` | Transaction quantity | Integer | 15, 1, -1 |
+| `COST` | Transaction cost | Decimal | 0.74, 15.00 |
+| `SALE` | Sale price | Decimal | 1.13, 51.00 |
+| `USER-ID` | User identifier | String | "141328DMILLE" |
+| `INV-NO` | Invoice number | String | "RO541563" |
+
+### CSD Account Types
+Based on ACCTBAL analysis:
+- **1260A**: P & A HONDA CARS (Primary parts account)
+- **1261A**: HONDA ACCESSORIES 
+- **1263A**: OIL & GREASE
+
+### Transaction Type Codes
+From MOVEMENT analysis:
+- **SLS**: Sales transactions
+- **RV**: Returns/Reversals  
+- **PUR**: Purchase transactions
+- **ADD**: Additions/Adjustments
