@@ -117,47 +117,79 @@ The Hendrick Data API employs a multi-tenant, isolated partner architecture wher
 ```mermaid
 flowchart TD
     A[Reynolds & Reynolds<br/>XML/CSD Data] --> B[Existing Hendrick API<br/>Out of Scope]
-    B --> C[AWS S3 Bucket<br/>Immutable Storage<br/>- XML Files standardized<br/>- CSD Files partner-specific]
-    C --> D[Messaging Service<br/>Fan-out Pattern<br/>- Broadcasts data availability<br/>- No partner-specific config]
-    D --> E[EC2 Instance Docker + Traefik]
+    B --> C[AWS S3 Raw Data<br/>Immutable Storage<br/>- XML Files standardized<br/>- CSD Files partner-specific]
     
-    subgraph E[EC2 Instance]
-        F[Acme Container<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
-        G[Betamax Container<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
-        H[Partner N<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
-        I[Traefik Reverse Proxy<br/>- api.hendrick.com/acme/v1/* → Acme<br/>- api.hendrick.com/betamax/v1/* → Betamax<br/>- Automatic service discovery]
+    C --> D[S3 Event Notification<br/>Raw Data Available]
+    D --> E[Centralized Transform Service]
+    
+    subgraph E[Transform Service]
+        F[XML Processor<br/>Single Implementation]
+        G[CSD Processor<br/>Dealer-Aware Logic]
+        H[AWS KMS Integration<br/>Field-Level Encryption]
     end
+    
+    E --> I[AWS S3 Processed Data<br/>Partner-Ready JSON<br/>- Encrypted PII Fields<br/>- Queryable Metadata]
+    I --> J[S3 Event Notification<br/>Processed Data Available]
+    J --> K[Fan-out Message Queue]
+    
+    K --> L[EC2 Instance Docker + Traefik]
+    
+    subgraph L[Partner API Infrastructure]
+        M[Acme Container<br/>├─Config File<br/>├─Simple Data Ingestion<br/>├─Database + KMS Decrypt<br/>├─API Server<br/>└─Traefik Labels]
+        N[Betamax Container<br/>├─Config File<br/>├─Simple Data Ingestion<br/>├─Database + KMS Decrypt<br/>├─API Server<br/>└─Traefik Labels]
+        O[Partner N Container<br/>├─Config File<br/>├─Simple Data Ingestion<br/>├─Database + KMS Decrypt<br/>├─API Server<br/>└─Traefik Labels]
+        P[Traefik Reverse Proxy<br/>- api.hendrick.com/acme/v1/* → Acme<br/>- api.hendrick.com/betamax/v1/* → Betamax<br/>- Automatic service discovery]
+    end
+    
+    Q[AWS KMS] --> R[Individual Partner Keys]
+    R --> M
+    R --> N
+    R --> O
     
     style A fill:#4fc3f7,stroke:#01579b,stroke-width:2px,color:#000
     style B fill:#ba68c8,stroke:#4a148c,stroke-width:2px,color:#000
     style C fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
     style D fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
-    style E fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
-    style F fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
-    style G fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
-    style H fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style E fill:#4caf50,stroke:#1b5e20,stroke-width:3px,color:#000
     style I fill:#aed581,stroke:#33691e,stroke-width:2px,color:#000
+    style J fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
+    style K fill:#ff8a65,stroke:#bf360c,stroke-width:2px,color:#000
+    style L fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
+    style Q fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    style M fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style N fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style O fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style P fill:#c8e6c9,stroke:#33691e,stroke-width:2px,color:#000
 ```
 
 ### Core Architectural Principles
 
-1. **Complete Partner Isolation**: Each partner operates in a dedicated container with its own database, ensuring zero data leakage between partners
-2. **Event-Driven Processing**: Fan-out messaging pattern allows partners to self-select relevant data without central configuration management
-3. **Standardized API Patterns**: Common endpoint structures (`/v1/inventory`, `/v1/sales`, `/v1/service`) with partner-specific data filtering
-4. **Infrastructure Simplicity**: Single EC2 instance with Docker Compose orchestration for operational simplicity and easy recovery
+1. **Complete Partner Isolation**: Each partner operates in a dedicated container with its own database and encryption keys, ensuring zero data leakage between partners
+2. **Centralized Transformation**: Single transformation service eliminates N copies of XML processing logic and enables consistent data quality
+3. **Field-Level Security**: Data classification-driven encryption protects PII while maintaining queryable business fields
+4. **Event-Driven Processing**: Dual-stage messaging (raw data → transform → processed data → partners) with fan-out pattern for scalability
+5. **Simplified Partner Containers**: Partners focus on data consumption and API serving rather than complex transformation logic
+6. **Cross-Cloud Compatibility**: AWS KMS integration enables enterprise security regardless of infrastructure provider
 
 ### Component Architecture
 
 #### Partner Container Structure
 
-Each partner container is a self-contained application including:
+Each partner container is a simplified, focused application including:
 
-- **Configuration Management**: Partner-specific config file defining authorized dealerships and data types
-- **Message Subscription**: Subscribes to fan-out messaging queue for S3 data availability notifications
-- **Data Processing**: Retrieves and transforms XML/CSD data from S3 based on partner authorization
-- **Local Database**: Partner-specific database for data storage and querying (SQLite or PostgreSQL)
-- **API Server**: RESTful API endpoints for partner data access
+- **Configuration Management**: Partner-specific config file defining authorized dealerships, data types, and AWS KMS key references
+- **Message Subscription**: Subscribes to fan-out messaging queue for processed data availability notifications
+- **Simple Data Ingestion**: Retrieves pre-processed, encrypted JSON data from S3 processed bucket
+- **AWS KMS Integration**: Decrypts authorized fields using partner-specific KMS keys during API responses
+- **Local Database**: Partner-specific database for encrypted data storage and querying (SQLite or PostgreSQL)
+- **API Server**: RESTful API endpoints with real-time field decryption for authorized partner access
 - **Traefik Integration**: Automatic service discovery and routing via Docker labels
+
+**Key Simplifications from Centralized Transform Architecture**:
+- **No XML/CSD Processing**: All transformation handled by centralized service
+- **No Complex Data Logic**: Containers focus purely on data consumption and API serving  
+- **Pre-processed Data**: Receives clean, encrypted JSON ready for database storage
+- **Security-Focused**: Primary complexity is KMS integration and field-level authorization
 
 #### Messaging Architecture
 
@@ -200,14 +232,21 @@ Each partner container is a self-contained application including:
 
 #### Data Flow Architecture
 
-1. **Data Ingestion**: Reynolds & Reynolds → Existing Hendrick API → AWS S3 (immutable storage)
-2. **Notification**: S3 event triggers message to fan-out queue
-3. **Partner Processing**: 
-   - Partner containers receive notification
+1. **Data Ingestion**: Reynolds & Reynolds → Existing Hendrick API → AWS S3 Raw Data (immutable storage)
+2. **Raw Data Notification**: S3 event triggers notification to centralized transformation service
+3. **Centralized Transformation**: 
+   - Transform service receives raw data notification
+   - Processes XML files with single standardized implementation
+   - Processes CSD files with dealer-aware logic
+   - Applies field-level encryption using AWS KMS with partner-specific keys
+   - Stores processed, encrypted JSON to S3 Processed Data bucket
+4. **Processed Data Notification**: S3 processed data event triggers fan-out message queue
+5. **Partner Data Ingestion**:
+   - Partner containers receive processed data notification
    - Filter based on authorized dealerships and data types
-   - Retrieve relevant data from S3
-   - Transform and store in partner-specific database
-4. **Data Access**: Partner applications query via standardized API endpoints
+   - Retrieve pre-processed JSON data from S3 Processed bucket
+   - Store in partner-specific database (no transformation required)
+6. **Data Access**: Partner applications query via standardized API endpoints with real-time KMS decryption
 
 ### Infrastructure Architecture
 
@@ -1076,6 +1115,421 @@ data_type: "parts_inventory" (from CSD file type)
 json_data: {processed CSD data with original preservation}
 created_at: "2025-07-02T10:30:00Z"
 ```
+
+### Field-Level Encryption Strategy
+
+#### Data Classification-Based Encryption
+
+Based on the **Confidential** data classification outlined in `DATA_CLASSIFICATION.md`, the system implements field-level encryption for PII and sensitive business data within JSON data structures.
+
+#### Encryption Decision Matrix
+
+**Always Encrypted Fields (High Sensitivity)**:
+```yaml
+pii_fields:
+  - buyer_name
+  - buyer_address  
+  - buyer_phone
+  - buyer_email
+  - buyer_ssn
+  
+financial_fields:
+  - credit_score
+  - financing_details
+  - bank_account_info
+  - payment_method_details
+  
+sensitive_business_fields:
+  - profit_margins
+  - dealer_cost
+  - manufacturer_incentives
+```
+
+**Query-Optimized Fields (Low Sensitivity)**:
+```yaml
+plaintext_fields:
+  - vin
+  - vehicle_make
+  - vehicle_model
+  - vehicle_year
+  - sale_date
+  - dealership_id
+  - vehicle_color
+  - basic_vehicle_specs
+```
+
+#### Field-Level Encryption Implementation
+
+**Transformation Service Encryption**:
+```python
+class DataClassificationEncryption:
+    def __init__(self):
+        self.always_encrypt = {
+            'buyer_name', 'buyer_address', 'buyer_phone', 'buyer_email',
+            'buyer_ssn', 'credit_score', 'financing_details'
+        }
+        
+        self.conditional_encrypt = {
+            'sale_price': 'partner_specific',  # Some partners authorized, others not
+            'dealer_cost': 'internal_only'
+        }
+    
+    def process_for_encryption(self, data, partner_authorizations):
+        processed = data.copy()
+        
+        # Always encrypt high-sensitivity fields
+        for field in self.always_encrypt:
+            if field in processed:
+                encrypted_value = self.encrypt_field_with_partner_key(field, processed[field])
+                processed[f"{field}_encrypted"] = encrypted_value
+                del processed[field]
+        
+        # Conditionally encrypt based on partner authorization
+        for field, condition in self.conditional_encrypt.items():
+            if field in processed and not self.partner_authorized_for_field(partner_authorizations, field):
+                encrypted_value = self.encrypt_field_with_partner_key(field, processed[field])
+                processed[f"{field}_encrypted"] = encrypted_value
+                del processed[field]
+        
+        return processed
+```
+
+**Encrypted JSON Structure Example**:
+```json
+{
+  "vin": "1HGBH41JXMN109186",
+  "vehicle_make": "Honda", 
+  "vehicle_model": "Accord",
+  "sale_date": "2025-07-02",
+  "dealership_id": "honda-concord",
+  
+  "buyer_name_encrypted": "AQICAHi8Y1x...",
+  "buyer_address_encrypted": "AQICAHj9X2y...",
+  "buyer_ssn_encrypted": "AQICAHk1Z3z...",
+  
+  "encryption_metadata": {
+    "encrypted_fields": ["buyer_name", "buyer_address", "buyer_ssn"],
+    "partner_key_id": "arn:aws:kms:us-east-1:account:key/partner-tds",
+    "encryption_algorithm": "AES-256-GCM",
+    "data_classification": "confidential"
+  }
+}
+```
+
+#### API-Level Decryption
+
+Partner containers decrypt authorized fields during API response generation:
+
+```python
+class PartnerAPIDecryption:
+    def get_sales_data(self, request_filters):
+        # Query database for encrypted records
+        encrypted_records = self.database.query(request_filters)
+        
+        # Decrypt only authorized fields for this partner
+        decrypted_records = []
+        for record in encrypted_records:
+            data = json.loads(record['json_data'])
+            
+            # Decrypt authorized encrypted fields
+            if 'buyer_name_encrypted' in data and self.authorized_for('buyer_name'):
+                data['buyer_name'] = self.kms.decrypt_field(data['buyer_name_encrypted'])
+                del data['buyer_name_encrypted']
+            
+            # Remove unauthorized encrypted fields from response
+            data = self.filter_unauthorized_fields(data)
+            decrypted_records.append(data)
+        
+        return decrypted_records
+```
+
+#### Compliance and Audit Benefits
+
+**Data Minimization Compliance**:
+- Partners store only decryptable data they're authorized to access
+- Encrypted fields remain protected even if database is compromised
+- Audit trail shows exactly which fields each partner can decrypt
+
+**Breach Impact Limitation**:
+- Database compromise exposes only plaintext queryable fields
+- PII and financial data remain encrypted and unusable without AWS KMS keys
+- Partner-specific keys limit cross-partner data exposure
+
+### AWS KMS Integration & Key Management
+
+#### Individual Partner Key Strategy
+
+Each partner receives a dedicated AWS KMS Customer Managed Key (CMK) for complete cryptographic isolation and granular access control.
+
+#### Key Management Architecture
+
+```mermaid
+flowchart TD
+    A[AWS KMS] --> B[Partner Key Management]
+    B --> C[TDS Partner Key<br/>arn:aws:kms:us-east-1:account:key/tds-uuid]
+    B --> D[Acme Partner Key<br/>arn:aws:kms:us-east-1:account:key/acme-uuid]
+    B --> E[Partner N Key<br/>arn:aws:kms:us-east-1:account:key/partner-n-uuid]
+    
+    F[Transform Service] --> G[Encrypt with All Partner Keys]
+    G --> H[Partner-Specific Encrypted Data]
+    
+    I[TDS Container] --> C
+    J[Acme Container] --> D
+    K[Partner N Container] --> E
+    
+    style A fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#000
+    style C fill:#4caf50,stroke:#1b5e20,stroke-width:2px,color:#000
+    style D fill:#4caf50,stroke:#1b5e20,stroke-width:2px,color:#000
+    style E fill:#4caf50,stroke:#1b5e20,stroke-width:2px,color:#000
+    style F fill:#2196f3,stroke:#0d47a1,stroke-width:2px,color:#000
+```
+
+#### Automated Key Provisioning During Deployment
+
+**Partner Onboarding Key Creation**:
+```python
+class PartnerKeyProvisioning:
+    def __init__(self):
+        self.kms = boto3.client('kms', region_name='us-east-1')
+        self.iam = boto3.client('iam')
+    
+    def provision_partner_key(self, partner_id):
+        # Create customer managed key for partner
+        key_policy = self.generate_partner_key_policy(partner_id)
+        
+        response = self.kms.create_key(
+            Description=f'Hendrick Data API - {partner_id} encryption key',
+            KeyUsage='ENCRYPT_DECRYPT',
+            KeySpec='SYMMETRIC_DEFAULT',
+            Policy=json.dumps(key_policy),
+            Tags=[
+                {'TagKey': 'Partner', 'TagValue': partner_id},
+                {'TagKey': 'Environment', 'TagValue': 'production'},
+                {'TagKey': 'Application', 'TagValue': 'hendrick-data-api'}
+            ]
+        )
+        
+        key_id = response['KeyMetadata']['KeyId']
+        key_arn = response['KeyMetadata']['Arn']
+        
+        # Create key alias for easier reference
+        alias_name = f'alias/hendrick-partner-{partner_id}'
+        self.kms.create_alias(
+            AliasName=alias_name,
+            TargetKeyId=key_id
+        )
+        
+        # Create IAM role for partner container
+        self.create_partner_iam_role(partner_id, key_arn)
+        
+        return {
+            'key_id': key_id,
+            'key_arn': key_arn,
+            'alias': alias_name
+        }
+    
+    def generate_partner_key_policy(self, partner_id):
+        return {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "Enable Root Permissions",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": f"arn:aws:iam::{AWS_ACCOUNT_ID}:root"},
+                    "Action": "kms:*",
+                    "Resource": "*"
+                },
+                {
+                    "Sid": f"Allow {partner_id} Container Access",
+                    "Effect": "Allow", 
+                    "Principal": {"AWS": f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/hendrick-partner-{partner_id}"},
+                    "Action": [
+                        "kms:Encrypt",
+                        "kms:Decrypt", 
+                        "kms:ReEncrypt*",
+                        "kms:GenerateDataKey*",
+                        "kms:DescribeKey"
+                    ],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "kms:EncryptionContext:partner": partner_id
+                        }
+                    }
+                },
+                {
+                    "Sid": "Allow Transform Service Access",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/hendrick-transform-service"},
+                    "Action": [
+                        "kms:Encrypt",
+                        "kms:GenerateDataKey*"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+```
+
+#### Deployment Automation Integration
+
+**Kamal Deploy Hook for Key Provisioning**:
+```yaml
+# .kamal/hooks/pre-deploy
+#!/bin/bash
+set -e
+
+PARTNER_ID=$1
+
+if [ -z "$PARTNER_ID" ]; then
+    echo "Usage: $0 <partner_id>"
+    exit 1
+fi
+
+echo "Provisioning AWS KMS key for partner: $PARTNER_ID"
+
+# Run key provisioning script
+python3 scripts/provision_partner_key.py --partner-id $PARTNER_ID
+
+# Update partner configuration with key ARN
+KEY_ARN=$(aws kms describe-key --key-id alias/hendrick-partner-$PARTNER_ID --query 'KeyMetadata.Arn' --output text)
+
+# Update partner config file
+sed -i "s/KEY_ARN_PLACEHOLDER/$KEY_ARN/g" config/partners/$PARTNER_ID.yml
+
+echo "✓ AWS KMS key provisioned: $KEY_ARN"
+```
+
+**Partner Configuration with Key Integration**:
+```yaml
+# config/partners/tds.yml
+partner:
+  id: "tds"
+  name: "TDS Application"
+
+aws_kms:
+  key_arn: "arn:aws:kms:us-east-1:123456789:key/12345678-1234-1234-1234-123456789012"
+  key_alias: "alias/hendrick-partner-tds"
+  region: "us-east-1"
+  
+encryption:
+  enabled: true
+  algorithm: "AES-256-GCM"
+  encryption_context:
+    partner: "tds"
+    application: "hendrick-data-api"
+
+authorization:
+  xml_data_types: ["sales", "service"]
+  csd_data_types: ["parts_inventory", "parts_sales"]
+  
+  # Field-level authorization
+  encrypted_fields_access:
+    - buyer_name
+    - buyer_address
+  
+  plaintext_fields_access:
+    - vin
+    - sale_date
+    - vehicle_make
+    - vehicle_model
+```
+
+#### Key Rotation Automation
+
+**Automated Annual Key Rotation**:
+```python
+class PartnerKeyRotation:
+    def rotate_partner_key(self, partner_id):
+        key_alias = f"alias/hendrick-partner-{partner_id}"
+        
+        # Enable automatic key rotation
+        self.kms.enable_key_rotation(KeyId=key_alias)
+        
+        # Schedule re-encryption of existing data with new key version
+        self.schedule_data_reencryption(partner_id)
+        
+        # Update partner container with new key version
+        self.update_partner_container_key_reference(partner_id)
+    
+    def schedule_data_reencryption(self, partner_id):
+        # Background job to re-encrypt partner data with rotated key
+        # Process data in batches to avoid performance impact
+        lambda_payload = {
+            'partner_id': partner_id,
+            'operation': 'reencrypt_data',
+            'batch_size': 1000
+        }
+        
+        self.lambda_client.invoke(
+            FunctionName='hendrick-data-reencryption',
+            InvocationType='Event',
+            Payload=json.dumps(lambda_payload)
+        )
+```
+
+#### Cross-Cloud KMS Access
+
+Since the application may run on non-AWS infrastructure (Digital Ocean, bare metal), KMS access is configured via IAM credentials:
+
+**Environment Configuration for Non-AWS Deployment**:
+```yaml
+# docker-compose.yml for Digital Ocean deployment
+services:
+  tds-api:
+    image: hendrick/tds-api:latest
+    environment:
+      # AWS KMS access from any cloud provider
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+      
+      # Partner-specific KMS configuration
+      PARTNER_KMS_KEY_ARN: arn:aws:kms:us-east-1:account:key/tds-key
+      PARTNER_ID: tds
+      
+      # Database connection (local infrastructure)
+      DATABASE_URL: postgresql://user:pass@postgres:5432/tds
+```
+
+#### KMS Cost Management
+
+**Estimated Monthly Costs**:
+```python
+class KMSCostProjection:
+    def calculate_monthly_cost(self, num_partners, daily_operations):
+        # Customer managed keys: $1/month per key
+        key_storage_cost = num_partners * 1.00
+        
+        # API requests: $0.03 per 10,000 requests
+        monthly_requests = daily_operations * 30 * num_partners
+        api_cost = (monthly_requests / 10000) * 0.03
+        
+        return {
+            'key_storage': f"${key_storage_cost:.2f}",
+            'api_requests': f"${api_cost:.2f}",
+            'total_monthly': f"${key_storage_cost + api_cost:.2f}"
+        }
+
+# Example: 5 partners, 1000 encrypt/decrypt operations per day
+# Key storage: $5.00/month  
+# API requests: $4.50/month
+# Total: $9.50/month for enterprise-grade encryption
+```
+
+#### Security Benefits of Individual Partner Keys
+
+**Cryptographic Isolation**:
+- TDS key compromise cannot decrypt Acme data
+- Partner offboarding requires only single key deletion
+- Granular audit trail per partner key usage
+- Independent key rotation schedules per partner
+
+**Compliance Advantages**:
+- Perfect data segregation for regulatory requirements
+- Partner-specific access control attestation
+- Simplified compliance reporting per partner relationship
+- Clean audit trails for data access by partner
 
 ### Partner Authorization Model
 
