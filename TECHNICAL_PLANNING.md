@@ -114,42 +114,29 @@ The Hendrick Data API employs a multi-tenant, isolated partner architecture wher
 
 ### High-Level Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────────────────┐
-│ Reynolds &      │    │ Existing         │    │ AWS S3 Bucket                   │
-│ Reynolds        │───▶│ Hendrick API     │───▶│ (Immutable Storage)             │
-│ (XML/CSD Data)  │    │ (Out of Scope)   │    │ - XML Files (standardized)      │
-└─────────────────┘    └──────────────────┘    │ - CSD Files (partner-specific)  │
-                                               └─────────────────────────────────┘
-                                                             │
-                                                             ▼
-                                               ┌─────────────────────────────────┐
-                                               │ Messaging Service               │
-                                               │ (Fan-out Pattern)               │
-                                               │ - Broadcasts data availability  │
-                                               │ - No partner-specific config    │
-                                               └─────────────────────────────────┘
-                                                             │
-                                                             ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ EC2 Instance (Docker + Traefik)                                                                │
-│                                                                                                 │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐                          │
-│  │ Acme Container   │  │ Betamax Container│  │ Partner N        │                          │
-│  │ ├─Config File    │  │ ├─Config File    │  │ ├─Config File    │                          │
-│  │ ├─Data Processor │  │ ├─Data Processor │  │ ├─Data Processor │                          │
-│  │ ├─Database       │  │ ├─Database       │  │ ├─Database       │                          │
-│  │ ├─API Server     │  │ ├─API Server     │  │ ├─API Server     │                          │
-│  │ └─Traefik Labels │  │ └─Traefik Labels │  │ └─Traefik Labels │                          │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘                          │
-│                                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────────────────────┐ │
-│  │ Traefik Reverse Proxy                                                                       │ │
-│  │ - api.hendrick.com/acme/v1/* → Acme Container                                              │ │
-│  │ - api.hendrick.com/betamax/v1/* → Betamax Container                                        │ │
-│  │ - Automatic service discovery via Docker labels                                            │ │
-│  └─────────────────────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[Reynolds & Reynolds<br/>XML/CSD Data] --> B[Existing Hendrick API<br/>Out of Scope]
+    B --> C[AWS S3 Bucket<br/>Immutable Storage<br/>- XML Files standardized<br/>- CSD Files partner-specific]
+    C --> D[Messaging Service<br/>Fan-out Pattern<br/>- Broadcasts data availability<br/>- No partner-specific config]
+    D --> E[EC2 Instance Docker + Traefik]
+    
+    subgraph E[EC2 Instance]
+        F[Acme Container<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
+        G[Betamax Container<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
+        H[Partner N<br/>├─Config File<br/>├─Data Processor<br/>├─Database<br/>├─API Server<br/>└─Traefik Labels]
+        I[Traefik Reverse Proxy<br/>- api.hendrick.com/acme/v1/* → Acme<br/>- api.hendrick.com/betamax/v1/* → Betamax<br/>- Automatic service discovery]
+    end
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#fce4ec
+    style F fill:#e3f2fd
+    style G fill:#e3f2fd
+    style H fill:#e3f2fd
+    style I fill:#f1f8e9
 ```
 
 ### Core Architectural Principles
@@ -258,12 +245,18 @@ Each partner container is a self-contained application including:
 
 #### Deployment Template Structure
 
-```
-templates/
-├── docker-compose.yml.template
-├── partner-config.yml.template
-├── traefik-labels.template
-└── deploy-partner.sh
+```mermaid
+graph TD
+    A[templates/] --> B[docker-compose.yml.template]
+    A --> C[partner-config.yml.template]
+    A --> D[traefik-labels.template]
+    A --> E[deploy-partner.sh]
+    
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#fce4ec
 ```
 
 ### Monitoring & Operations
@@ -370,41 +363,82 @@ GET /{partner}/v1/service
 
 ### Query Parameters
 
-#### Date-Based Filtering
+#### JSON:API Query Parameters
+
+**Filtering (JSON:API Spec)**:
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
-| `period` | string | Predefined time periods | `today`, `yesterday`, `last_week`, `last_month` |
-| `date` | string | Specific date (YYYY-MM-DD) | `2025-07-02` |
-| `start_date` | string | Date range start (YYYY-MM-DD) | `2025-07-01` |
-| `end_date` | string | Date range end (YYYY-MM-DD) | `2025-07-07` |
+| `filter[period]` | string | Predefined time periods | `today`, `yesterday`, `last_week`, `last_month` |
+| `filter[date]` | string | Specific date (YYYY-MM-DD) | `2025-07-02` |
+| `filter[start_date]` | string | Date range start (YYYY-MM-DD) | `2025-07-01` |
+| `filter[end_date]` | string | Date range end (YYYY-MM-DD) | `2025-07-07` |
+| `filter[dealership_id]` | string | Filter by specific dealership | `123e4567-e89b-12d3-a456-426614174000` |
 
-#### Pagination Parameters
+**Pagination (JSON:API Spec)**:
 | Parameter | Type | Description | Default | Maximum |
 |-----------|------|-------------|---------|---------|
-| `offset` | integer | Number of records to skip | `0` | No limit |
-| `limit` | integer | Number of records to return | `1000` | `10000` |
+| `page[offset]` | integer | Number of records to skip | `0` | No limit |
+| `page[limit]` | integer | Number of records to return | `1000` | `10000` |
 
-#### Example Queries
+**Sorting (JSON:API Spec)**:
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `sort` | string | Sort by field (- for descending) | `created_date`, `-updated_date` |
+
+**Sparse Fieldsets (JSON:API Spec)**:
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `fields[inventory-items]` | string | Comma-separated list of fields to include | `vin,make,model,year` |
+
+#### Example JSON:API Queries
 ```
-GET /acme/v1/inventory
-GET /acme/v1/inventory?period=today
-GET /acme/v1/inventory?date=2025-07-02
-GET /acme/v1/inventory?start_date=2025-07-01&end_date=2025-07-07
-GET /acme/v1/inventory?period=today&offset=1000&limit=500
+GET /acme/v1/inventory-items
+GET /acme/v1/inventory-items?filter[period]=today
+GET /acme/v1/inventory-items?filter[date]=2025-07-02
+GET /acme/v1/inventory-items?filter[start_date]=2025-07-01&filter[end_date]=2025-07-07
+GET /acme/v1/inventory-items?filter[period]=today&page[offset]=1000&page[limit]=500
+GET /acme/v1/inventory-items?sort=-created_date&fields[inventory-items]=vin,make,model
+GET /acme/v1/inventory-items/550e8400-e29b-41d4-a716-446655440000
 ```
 
-### Response Format
+### JSON:API Response Format
 
-#### Success Response Structure
+#### Success Response Structure (JSON:API Compliant)
 ```json
 {
-  "metadata": {
-    "count": 1000,
-    "total_records": 5000,
-    "offset": 0,
-    "limit": 1000,
-    "has_next": true,
-    "next_offset": 1000,
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "data": [
+    {
+      "type": "inventory-items",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "attributes": {
+        "vin": "1HGBH41JXMN109186",
+        "make": "Honda",
+        "model": "Accord",
+        "year": 2023,
+        "status": "available",
+        "created_date": "2025-07-02T08:30:00Z",
+        "updated_date": "2025-07-02T08:30:00Z"
+      },
+      "relationships": {
+        "dealership": {
+          "data": {
+            "type": "dealerships",
+            "id": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        }
+      }
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 1000,
+      "count": 1000,
+      "total": 5000
+    },
     "query": {
       "period": "today"
     },
@@ -415,29 +449,28 @@ GET /acme/v1/inventory?period=today&offset=1000&limit=500
     },
     "generated_at": "2025-07-02T10:00:00Z"
   },
-  "inventory": [
-    {
-      "vin": "1HGBH41JXMN109186",
-      "dealership_id": "123e4567-e89b-12d3-a456-426614174000",
-      "make": "Honda",
-      "model": "Accord",
-      "year": 2023,
-      "status": "available",
-      "created_date": "2025-07-02T08:30:00Z"
-    }
-  ]
+  "links": {
+    "self": "https://api.hendrick.com/acme/v1/inventory-items?filter[period]=today&page[offset]=0&page[limit]=1000",
+    "next": "https://api.hendrick.com/acme/v1/inventory-items?filter[period]=today&page[offset]=1000&page[limit]=1000",
+    "last": "https://api.hendrick.com/acme/v1/inventory-items?filter[period]=today&page[offset]=4000&page[limit]=1000"
+  }
 }
 ```
 
-#### Empty Dataset Response
+#### Empty Dataset Response (JSON:API Compliant)
 ```json
 {
-  "metadata": {
-    "count": 0,
-    "total_records": 0,
-    "offset": 0,
-    "limit": 1000,
-    "has_next": false,
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "data": [],
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 1000,
+      "count": 0,
+      "total": 0
+    },
     "query": {
       "period": "today"
     },
@@ -449,24 +482,36 @@ GET /acme/v1/inventory?period=today&offset=1000&limit=500
     },
     "generated_at": "2025-07-02T06:00:00Z"
   },
-  "inventory": []
+  "links": {
+    "self": "https://api.hendrick.com/acme/v1/inventory-items?filter[period]=today&page[offset]=0&page[limit]=1000"
+  }
 }
 ```
 
-### Error Responses
+### JSON:API Error Responses
 
-#### Error Response Structure
+#### Error Response Structure (JSON:API Compliant)
 ```json
 {
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error description",
-    "details": {
-      "parameter": "parameter_name",
-      "provided_value": "invalid_value",
-      "expected_format": "expected_format"
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "errors": [
+    {
+      "id": "unique-error-id",
+      "status": "400",
+      "code": "INVALID_PARAMETER",
+      "title": "Invalid Parameter",
+      "detail": "The provided parameter value is not in the expected format",
+      "source": {
+        "parameter": "filter[date]"
+      },
+      "meta": {
+        "provided_value": "2025/07/02",
+        "expected_format": "YYYY-MM-DD"
+      }
     }
-  }
+  ]
 }
 ```
 
@@ -475,59 +520,100 @@ GET /acme/v1/inventory?period=today&offset=1000&limit=500
 **Invalid Date Format (400 Bad Request)**
 ```json
 {
-  "error": {
-    "code": "INVALID_DATE_FORMAT",
-    "message": "Date parameter must be in YYYY-MM-DD format",
-    "details": {
-      "parameter": "date",
-      "provided_value": "2025/07/02",
-      "expected_format": "YYYY-MM-DD"
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "errors": [
+    {
+      "id": "date-format-error-001",
+      "status": "400",
+      "code": "INVALID_DATE_FORMAT",
+      "title": "Invalid Date Format",
+      "detail": "Date parameter must be in YYYY-MM-DD format",
+      "source": {
+        "parameter": "filter[date]"
+      },
+      "meta": {
+        "provided_value": "2025/07/02",
+        "expected_format": "YYYY-MM-DD"
+      }
     }
-  }
+  ]
 }
 ```
 
 **Pagination Limit Exceeded (400 Bad Request)**
 ```json
 {
-  "error": {
-    "code": "INVALID_LIMIT",
-    "message": "Limit exceeds maximum allowed value of 10000",
-    "details": {
-      "parameter": "limit",
-      "provided_value": 15000,
-      "maximum_allowed": 10000
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "errors": [
+    {
+      "id": "pagination-limit-error-001",
+      "status": "400",
+      "code": "INVALID_LIMIT",
+      "title": "Pagination Limit Exceeded",
+      "detail": "Limit exceeds maximum allowed value of 10000",
+      "source": {
+        "parameter": "page[limit]"
+      },
+      "meta": {
+        "provided_value": 15000,
+        "maximum_allowed": 10000
+      }
     }
-  }
+  ]
 }
 ```
 
 **Invalid Offset (400 Bad Request)**
 ```json
 {
-  "error": {
-    "code": "INVALID_OFFSET",
-    "message": "Offset cannot be negative",
-    "details": {
-      "parameter": "offset",
-      "provided_value": -100,
-      "minimum_allowed": 0
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "errors": [
+    {
+      "id": "pagination-offset-error-001",
+      "status": "400",
+      "code": "INVALID_OFFSET",
+      "title": "Invalid Pagination Offset",
+      "detail": "Offset cannot be negative",
+      "source": {
+        "parameter": "page[offset]"
+      },
+      "meta": {
+        "provided_value": -100,
+        "minimum_allowed": 0
+      }
     }
-  }
+  ]
 }
 ```
 
 **Authentication Failed (401 Unauthorized)**
 ```json
 {
-  "error": {
-    "code": "AUTHENTICATION_FAILED",
-    "message": "Invalid or expired JWT token",
-    "details": {
-      "token_status": "expired",
-      "expires_at": "2025-07-02T10:00:00Z"
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "errors": [
+    {
+      "id": "auth-failed-001",
+      "status": "401",
+      "code": "AUTHENTICATION_FAILED",
+      "title": "Authentication Failed",
+      "detail": "Invalid or expired JWT token",
+      "source": {
+        "pointer": "/headers/authorization"
+      },
+      "meta": {
+        "token_status": "expired",
+        "expires_at": "2025-07-02T10:00:00Z"
+      }
     }
-  }
+  ]
 }
 ```
 
@@ -542,12 +628,78 @@ GET /acme/v1/inventory?period=today&offset=1000&limit=500
 | `404 Not Found` | Client Error | Invalid endpoint or partner route |
 | `500 Internal Server Error` | Server Error | System errors, database issues |
 
-### Content Type
+### Content Type (JSON:API Specification)
 
-**Request**: `Accept: application/json`
-**Response**: `Content-Type: application/json`
+**Request**: `Accept: application/vnd.api+json`
+**Response**: `Content-Type: application/vnd.api+json`
 
-**Note**: Only JSON format is supported. Sample code will be provided to partners for client-side conversion to CSV or other formats as needed.
+**JSON:API Compliance**: All API responses strictly adhere to the JSON:API specification v1.0. The API will return a `415 Unsupported Media Type` error if the request does not include the proper `Accept` header.
+
+**Note**: Only JSON:API format is supported. Sample code will be provided to partners for client-side conversion to CSV or other formats as needed.
+
+### JSON:API Relationships and Includes
+
+The API supports JSON:API relationship loading through the `include` parameter:
+
+#### Supported Relationships
+| Resource Type | Available Relationships | Description |
+|---------------|------------------------|-------------|
+| `inventory-items` | `dealership` | The dealership where the inventory item is located |
+| `sales-records` | `dealership`, `customer` | The dealership and customer involved in the sale |
+| `service-records` | `dealership`, `customer` | The dealership and customer involved in the service |
+
+#### Include Examples
+```
+GET /acme/v1/inventory-items?include=dealership
+GET /acme/v1/sales-records?include=dealership,customer
+GET /acme/v1/service-records?include=dealership
+```
+
+#### Response with Included Resources
+```json
+{
+  "jsonapi": {
+    "version": "1.0"
+  },
+  "data": [
+    {
+      "type": "inventory-items",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "attributes": {
+        "vin": "1HGBH41JXMN109186",
+        "make": "Honda",
+        "model": "Accord"
+      },
+      "relationships": {
+        "dealership": {
+          "data": {
+            "type": "dealerships",
+            "id": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        }
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "dealerships",
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "attributes": {
+        "name": "Hendrick Honda Charlotte",
+        "address": "123 Main St, Charlotte, NC",
+        "phone": "(704) 555-0100"
+      }
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 1000,
+      "count": 1,
+      "total": 1
+    }
+  }
+}
 
 ### Rate Limiting
 
@@ -612,7 +764,34 @@ Sample integration code will be provided for:
 #### Development Environment
 - Test endpoints available with sample data
 - Auth0 test credentials for integration testing
-- Postman collection for API exploration
+- Postman collection for API exploration with JSON:API examples
+
+### JSON:API Implementation Details
+
+#### Content-Type Validation
+The API strictly enforces JSON:API content-type requirements:
+
+- **415 Unsupported Media Type**: Returned if `Accept: application/vnd.api+json` header is missing
+- **400 Bad Request**: Returned if request body content-type is incorrect for write operations
+- **200 OK**: All valid responses include `Content-Type: application/vnd.api+json`
+
+#### Resource Identification Strategy
+- **UUIDs as Resource IDs**: All resources use UUID format for consistent identification
+- **Type Naming Convention**: Hyphenated resource types (`inventory-items`, `sales-records`, `service-records`)
+- **Relationship Links**: Self and related links provided for all relationships when applicable
+
+#### Error Handling Enhancements
+JSON:API error responses include:
+- **Unique Error IDs**: For error tracking and debugging
+- **Source Pointers**: Precise location of errors in request
+- **Meta Information**: Additional context for troubleshooting
+- **Multiple Errors**: Single response can contain multiple validation errors
+
+#### Performance Considerations
+- **Sparse Fieldsets**: Partners can request specific fields to reduce payload size
+- **Relationship Loading**: Optional `include` parameter for efficient data loading
+- **Pagination Links**: Self, next, prev, first, last links for navigation
+- **Resource Caching**: ETag headers for efficient caching strategies
 
 ## Data Architecture
 
@@ -1493,17 +1672,27 @@ The audit system implements a coordinated pipeline to eliminate race conditions 
    - Maintain audit integrity without race conditions
 
 **Audit Storage Architecture**:
-```
-S3 Audit Bucket Structure:
-audit-responses/
-├── 2025/07/02/
-│   ├── partner-acme/
-│   │   ├── inventory-143000-uuid.json.enc
-│   │   └── sales-143030-uuid.json.enc
-│   ├── partner-betamax/
-│   │   └── service-143045-uuid.json.enc
-│   └── audit-metadata/
-│       └── daily-summary-20250702.json
+```mermaid
+graph TD
+    A[S3 Audit Bucket<br/>audit-responses/] --> B[2025/07/02/]
+    B --> C[partner-acme/]
+    B --> D[partner-betamax/]
+    B --> E[audit-metadata/]
+    
+    C --> F[inventory-143000-uuid.json.enc]
+    C --> G[sales-143030-uuid.json.enc]
+    D --> H[service-143045-uuid.json.enc]
+    E --> I[daily-summary-20250702.json]
+    
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#e8f5e8
+    style E fill:#fff3e0
+    style F fill:#fce4ec
+    style G fill:#fce4ec
+    style H fill:#fce4ec
+    style I fill:#e1f5fe
 ```
 
 **Audit Data Retention**:
@@ -1754,33 +1943,85 @@ The Hendrick Data API operations model prioritizes simplicity, reliability, and 
 
 **Authentication**: Unauthenticated for monitoring simplicity (health data is not confidential)
 
-**Health Response Structure**:
+**Health Response Structure (JSON:API Compliant)**:
 ```json
 {
-  "status": "healthy|degraded|unhealthy",
-  "timestamp": "2025-07-02T10:30:00Z",
-  "data_freshness": {
-    "inventory": {
-      "last_updated": "2025-07-02T02:30:00Z",
-      "data_date": "2025-07-02", 
-      "records": 1500,
-      "status": "current|stale|missing"
-    },
-    "sales": {
-      "last_updated": "2025-07-02T02:35:00Z",
-      "data_date": "2025-07-02",
-      "records": 856, 
-      "status": "current"
-    },
-    "service": null
+  "jsonapi": {
+    "version": "1.0"
   },
-  "system_health": {
-    "database": "healthy|unhealthy",
-    "auth": "healthy|unhealthy", 
-    "container_uptime": "2d 14h 23m",
-    "memory_usage_percent": 45,
-    "cpu_usage_percent": 23
-  }
+  "data": {
+    "type": "health-status",
+    "id": "partner-health",
+    "attributes": {
+      "status": "healthy",
+      "timestamp": "2025-07-02T10:30:00Z",
+      "container_uptime": "2d 14h 23m",
+      "memory_usage_percent": 45,
+      "cpu_usage_percent": 23
+    },
+    "relationships": {
+      "data-freshness": {
+        "data": [
+          {
+            "type": "data-freshness",
+            "id": "inventory"
+          },
+          {
+            "type": "data-freshness", 
+            "id": "sales"
+          }
+        ]
+      },
+      "system-components": {
+        "data": [
+          {
+            "type": "system-components",
+            "id": "database"
+          },
+          {
+            "type": "system-components",
+            "id": "auth"
+          }
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "data-freshness",
+      "id": "inventory",
+      "attributes": {
+        "last_updated": "2025-07-02T02:30:00Z",
+        "data_date": "2025-07-02",
+        "records": 1500,
+        "status": "current"
+      }
+    },
+    {
+      "type": "data-freshness",
+      "id": "sales", 
+      "attributes": {
+        "last_updated": "2025-07-02T02:35:00Z",
+        "data_date": "2025-07-02",
+        "records": 856,
+        "status": "current"
+      }
+    },
+    {
+      "type": "system-components",
+      "id": "database",
+      "attributes": {
+        "status": "healthy"
+      }
+    },
+    {
+      "type": "system-components",
+      "id": "auth",
+      "attributes": {
+        "status": "healthy"
+      }
+    }
+  ]
 }
 ```
 
@@ -2341,28 +2582,38 @@ test_partner_api --partner={partner-name} --full-test-suite
 #### Operational Documentation Repository
 
 **Documentation Structure**:
-```
-operations-wiki/
-├── runbooks/
-│   ├── partner-onboarding.md
-│   ├── incident-response.md
-│   ├── data-pipeline-troubleshooting.md
-│   └── security-procedures.md
-├── procedures/
-│   ├── deployment-procedures.md
-│   ├── backup-recovery.md
-│   ├── monitoring-setup.md
-│   └── capacity-planning.md
-├── troubleshooting/
-│   ├── common-issues.md
-│   ├── error-codes.md
-│   ├── diagnostic-commands.md
-│   └── escalation-procedures.md
-└── reference/
-    ├── architecture-diagrams.md
-    ├── configuration-reference.md
-    ├── api-endpoints.md
-    └── security-procedures.md
+```mermaid
+graph TD
+    A[operations-wiki/] --> B[runbooks/]
+    A --> C[procedures/]
+    A --> D[troubleshooting/]
+    A --> E[reference/]
+    
+    B --> F[partner-onboarding.md]
+    B --> G[incident-response.md]
+    B --> H[data-pipeline-troubleshooting.md]
+    B --> I[security-procedures.md]
+    
+    C --> J[deployment-procedures.md]
+    C --> K[backup-recovery.md]
+    C --> L[monitoring-setup.md]
+    C --> M[capacity-planning.md]
+    
+    D --> N[common-issues.md]
+    D --> O[error-codes.md]
+    D --> P[diagnostic-commands.md]
+    D --> Q[escalation-procedures.md]
+    
+    E --> R[architecture-diagrams.md]
+    E --> S[configuration-reference.md]
+    E --> T[api-endpoints.md]
+    E --> U[security-procedures.md]
+    
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style D fill:#fff3e0
+    style E fill:#fce4ec
 ```
 
 **Documentation Maintenance**:
