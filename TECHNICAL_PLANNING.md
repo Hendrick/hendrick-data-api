@@ -128,15 +128,15 @@ flowchart TD
         I[Traefik Reverse Proxy<br/>- api.hendrick.com/acme/v1/* → Acme<br/>- api.hendrick.com/betamax/v1/* → Betamax<br/>- Automatic service discovery]
     end
     
-    style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
-    style F fill:#e3f2fd
-    style G fill:#e3f2fd
-    style H fill:#e3f2fd
-    style I fill:#f1f8e9
+    style A fill:#4fc3f7,stroke:#01579b,stroke-width:2px,color:#000
+    style B fill:#ba68c8,stroke:#4a148c,stroke-width:2px,color:#000
+    style C fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
+    style D fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
+    style E fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
+    style F fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style G fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style H fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style I fill:#aed581,stroke:#33691e,stroke-width:2px,color:#000
 ```
 
 ### Core Architectural Principles
@@ -252,11 +252,11 @@ graph TD
     A --> D[traefik-labels.template]
     A --> E[deploy-partner.sh]
     
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+    style A fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style B fill:#f06292,stroke:#880e4f,stroke-width:2px,color:#000
+    style C fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
+    style D fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
+    style E fill:#ff8a65,stroke:#bf360c,stroke-width:2px,color:#000
 ```
 
 ### Monitoring & Operations
@@ -1684,15 +1684,15 @@ graph TD
     D --> H[service-143045-uuid.json.enc]
     E --> I[daily-summary-20250702.json]
     
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#e8f5e8
-    style E fill:#fff3e0
-    style F fill:#fce4ec
-    style G fill:#fce4ec
-    style H fill:#fce4ec
-    style I fill:#e1f5fe
+    style A fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style B fill:#ba68c8,stroke:#4a148c,stroke-width:2px,color:#000
+    style C fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
+    style D fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
+    style E fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
+    style F fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
+    style G fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
+    style H fill:#f48fb1,stroke:#880e4f,stroke-width:2px,color:#000
+    style I fill:#4fc3f7,stroke:#01579b,stroke-width:2px,color:#000
 ```
 
 **Audit Data Retention**:
@@ -2609,11 +2609,11 @@ graph TD
     E --> T[api-endpoints.md]
     E --> U[security-procedures.md]
     
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+    style A fill:#64b5f6,stroke:#0d47a1,stroke-width:2px,color:#000
+    style B fill:#f06292,stroke:#880e4f,stroke-width:2px,color:#000
+    style C fill:#81c784,stroke:#1b5e20,stroke-width:2px,color:#000
+    style D fill:#ffb74d,stroke:#e65100,stroke-width:2px,color:#000
+    style E fill:#ff8a65,stroke:#bf360c,stroke-width:2px,color:#000
 ```
 
 **Documentation Maintenance**:
