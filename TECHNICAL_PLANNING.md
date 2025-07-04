@@ -1,4 +1,4 @@
-# Hendrick Data API - Technical Planning Document
+# Hendrick Pipeline Engine - Technical Planning Document
 
 ## Executive Summary
 
@@ -120,9 +120,9 @@ flowchart TD
     B --> C[AWS S3 Raw Data<br/>Immutable Storage<br/>- XML Files standardized<br/>- CSD Files partner-specific]
     
     C --> D[S3 Event Notification<br/>Raw Data Available]
-    D --> E[Centralized Transform Service]
+    D --> E[Hendrick Pipeline Engine]
     
-    subgraph E[Transform Service]
+    subgraph E[Hendrick Pipeline Engine]
         F[XML Processor<br/>Single Implementation]
         G[CSD Processor<br/>Dealer-Aware Logic]
         H[AWS KMS Integration<br/>Field-Level Encryption]
@@ -165,7 +165,7 @@ flowchart TD
 ### Core Architectural Principles
 
 1. **Complete Partner Isolation**: Each partner operates in a dedicated container with its own database and encryption keys, ensuring zero data leakage between partners
-2. **Centralized Transformation**: Single transformation service eliminates N copies of XML processing logic and enables consistent data quality
+2. **Centralized Transformation**: The Hendrick Pipeline Engine eliminates N copies of XML processing logic and enables consistent data quality through a single, scalable transformation service
 3. **Field-Level Security**: Data classification-driven encryption protects PII while maintaining queryable business fields
 4. **Event-Driven Processing**: Dual-stage messaging (raw data → transform → processed data → partners) with fan-out pattern for scalability
 5. **Simplified Partner Containers**: Partners focus on data consumption and API serving rather than complex transformation logic
@@ -233,9 +233,9 @@ Each partner container is a simplified, focused application including:
 #### Data Flow Architecture
 
 1. **Data Ingestion**: Reynolds & Reynolds → Existing Hendrick API → AWS S3 Raw Data (immutable storage)
-2. **Raw Data Notification**: S3 event triggers notification to centralized transformation service
-3. **Centralized Transformation**: 
-   - Transform service receives raw data notification
+2. **Raw Data Notification**: S3 event triggers notification to Hendrick Pipeline Engine
+3. **Hendrick Pipeline Engine**: 
+   - Pipeline Engine receives raw data notification from S3
    - Processes XML files with single standardized implementation
    - Processes CSD files with dealer-aware logic
    - Applies field-level encryption using AWS KMS with partner-specific keys
